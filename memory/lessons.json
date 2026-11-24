@@ -1,0 +1,32 @@
+[
+  {
+    "id": "L12415ec7",
+    "problem": "A headline ('Everything runs on') overflowed its container by about 6px vertically, so the text spilled outside its box even though the horizontal fit was fine.",
+    "cause": "The container was sized with a fixed or tight height, and the heading's line-height, font-size, or wrapping was not accounted for. Descenders and extra line boxes pushed the text past the bottom edge.",
+    "rule": "Size text containers with height:auto and a min-height, and add padding for line-height and descenders. Never fix a heading's height to its exact text height, and check that the headline fits at its f",
+    "category": "layout",
+    "times_seen": 1,
+    "times_helped": 3,
+    "last_seen": "2026-11-23T20:57:09"
+  },
+  {
+    "id": "Ldbcb817b",
+    "problem": "The scene HTML loaded without defining window.setTime(t), so the renderer could not drive the animation and reported a load failure with nothing rendered.",
+    "cause": "The generator wrote the animation as autonomous playback (CSS animations, setTimeout/requestAnimationFrame, or a self-running GSAP timeline) and never exposed the required global time-seek hook. A script error before the definition could also have stopped it from being registered.",
+    "rule": "Always define window.setTime(t) at the top level of every scene's script, before any code that could throw, so it deterministically renders the full scene state for any time t in seconds rather than r",
+    "category": "technical",
+    "times_seen": 1,
+    "times_helped": 0,
+    "last_seen": "2026-11-23T21:04:28"
+  },
+  {
+    "id": "Lb778915e",
+    "problem": "The scene file did not define window.setTime(t), so the renderer could not seek or drive the animation. The scene failed to load or render and logged a console error.",
+    "cause": "The generator wrote the HTML and animation (CSS, autoplay, or timers) but never exposed the required global window.setTime(t) hook. It may also have defined the function in a scope or after an error where it never attached to window.",
+    "rule": "Always define window.setTime = function(t){...} at the top level of every scene's script. It must render the full scene state deterministically for any time t, with no reliance on autoplay or timers, ",
+    "category": "technical",
+    "times_seen": 1,
+    "times_helped": 0,
+    "last_seen": "2026-11-23T21:06:53"
+  }
+]
