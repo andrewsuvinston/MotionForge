@@ -1,0 +1,17 @@
+{
+  "series": {
+    "Logic Lab": {
+      "topic": "number series",
+      "episodes": 1,
+      "runs": [
+        {
+          "episode": 1,
+          "run_id": "20261125_180707_number_series_episode_1_make_the",
+          "prompt": "number series — episode 1, make the rule surprising but solvable in one pass",
+          "ts": "2026-11-25T18:07:46"
+        }
+      ],
+      "updated": "2026-11-25T18:07:46"
+    }
+  }
+}

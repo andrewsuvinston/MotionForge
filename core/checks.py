@@ -1,16 +1,15 @@
-"""Automatic quality checks.
+"""Automatic quality checks for mobile-first Shorts scenes.
 
 The DOM measurement script (MEASURE_JS) runs inside Playwright; all check logic
 is pure Python so it can be unit-tested with synthetic measurements.
 """
 from __future__ import annotations
 
-import math
 import re
 from dataclasses import dataclass, field, asdict
 
-# Collects every element that has its own visible text, with geometry, styles,
-# effective opacity/background, overflow and a DOM path for ancestry tests.
+# Collects every element that has its own visible text (for typography checks)
+# plus every visual block marked .occ (for occupancy / safe-area checks).
 MEASURE_JS = r"""
 () => {
   const vw = window.innerWidth, vh = window.innerHeight;
@@ -29,14 +28,28 @@ MEASURE_JS = r"""
     return o;
   }
   function effBg(el) {
+    // Composite translucent background layers down to an opaque approximation so
+    // contrast math never compares text against a see-through surface.
+    let layers = [];
     let n = el;
     while (n && n.nodeType === 1) {
       const c = getComputedStyle(n).backgroundColor;
       const m = c && c.match(/[\d.]+/g);
-      if (m && (m.length < 4 || parseFloat(m[3]) > 0.05)) return c;
+      if (m) {
+        const a = m.length < 4 ? 1 : parseFloat(m[3]);
+        if (a > 0.01) layers.push({r: +m[0], g: +m[1], b: +m[2], a});
+        if (a >= 0.999) break;
+      }
       n = n.parentElement;
     }
-    return getComputedStyle(document.documentElement).backgroundColor;
+    let base = {r: 7, g: 11, b: 24};
+    for (let i = layers.length - 1; i >= 0; i--) {
+      const l = layers[i];
+      base = {r: l.r * l.a + base.r * (1 - l.a),
+              g: l.g * l.a + base.g * (1 - l.a),
+              b: l.b * l.a + base.b * (1 - l.a)};
+    }
+    return `rgb(${Math.round(base.r)}, ${Math.round(base.g)}, ${Math.round(base.b)})`;
   }
   function pathOf(el) {
     const p = [];
@@ -65,8 +78,14 @@ MEASURE_JS = r"""
       overflowY: el.scrollHeight - el.clientHeight,
     };
   });
+  const occEls = Array.from(document.querySelectorAll('.occ'));
+  const boxes = occEls.map(el => {
+    const r = el.getBoundingClientRect();
+    return { id: el.id || '', cls: String(el.className || '').slice(0, 60),
+             x: r.x, y: r.y, w: r.width, h: r.height, opacity: effOpacity(el) };
+  }).filter(b => b.w > 2 && b.h > 2 && b.opacity > 0.05);
   return {
-    vw, vh, elements,
+    vw, vh, elements, boxes,
     duration: (typeof window.SCENE_DURATION === 'number') ? window.SCENE_DURATION : null,
     hasSetTime: typeof window.setTime === 'function',
   };
@@ -142,16 +161,91 @@ def _label(el: dict) -> str:
     return f"{el.get('tag', '?')}#{ident} '{el.get('text', '')[:30]}'"
 
 
+# ---------------- geometry helpers ----------------
+
+def merge_intervals(intervals: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    cleaned = sorted((a, b) for a, b in intervals if b > a)
+    merged: list[list[float]] = []
+    for a, b in cleaned:
+        if merged and a <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], b)
+        else:
+            merged.append([a, b])
+    return [(a, b) for a, b in merged]
+
+
+def occupancy_ratio(boxes: list[dict], frame_height: int) -> float:
+    """Fraction of frame height covered by visible .occ blocks (union)."""
+    if not boxes or frame_height <= 0:
+        return 0.0
+    intervals = []
+    for r in boxes:
+        if r.get("opacity", 1) <= 0.1 or r.get("w", 0) <= 0 or r.get("h", 0) <= 0:
+            continue
+        top = max(0.0, float(r["y"]))
+        bottom = min(float(frame_height), float(r["y"]) + float(r["h"]))
+        if bottom > top:
+            intervals.append((top, bottom))
+    covered = sum(b - a for a, b in merge_intervals(intervals))
+    return covered / float(frame_height)
+
+
+def content_bbox(elements: list[dict], visible_only: bool = True) -> tuple[float, float, float, float] | None:
+    """Bounding box (top, bottom, left, right) of visible text content."""
+    xs0, ys0, xs1, ys1 = [], [], [], []
+    for el in elements:
+        if visible_only and el.get("opacity", 0) <= 0.5:
+            continue
+        if el.get("w", 0) <= 1 or el.get("h", 0) <= 1:
+            continue
+        xs0.append(float(el["x"]))
+        ys0.append(float(el["y"]))
+        xs1.append(float(el["x"]) + float(el["w"]))
+        ys1.append(float(el["y"]) + float(el["h"]))
+    if not xs0:
+        return None
+    return (min(ys0), max(ys1), min(xs0), max(xs1))
+
+
+def safe_area_ok(elements: list[dict], vw: int, vh: int, video_cfg: dict,
+                 tol: float = 6.0) -> tuple[bool, str]:
+    """Check visible text content stays inside the mobile safe area."""
+    bbox = content_bbox(elements)
+    if bbox is None:
+        return False, "no visible content"
+    top, bottom, left, right = bbox
+    safe_top = vh * float(video_cfg.get("safe_top", 0.08))
+    safe_bottom = vh * (1.0 - float(video_cfg.get("safe_bottom", 0.15)))
+    gutter = vw * 0.03
+    issues = []
+    if top < safe_top - tol:
+        issues.append(f"top {top:.0f}px above safe line {safe_top:.0f}px")
+    if bottom > safe_bottom + tol:
+        issues.append(f"bottom {bottom:.0f}px below safe line {safe_bottom:.0f}px")
+    if left < gutter - tol:
+        issues.append(f"left {left:.0f}px outside gutter")
+    if right > vw - gutter + tol:
+        issues.append(f"right {right:.0f}px outside gutter")
+    return (not issues), "; ".join(issues)
+
+
 # ---------------- main check entry ----------------
 
 def run_checks(measurement: dict, plan_duration: float, console_errors: list[str],
-               frame_stats: list[dict], cfg: dict, default_bg: str = "#000000") -> list[Problem]:
-    """Run all automatic checks on one scene's measurements. Pure function."""
+               frame_stats: list[dict], cfg: dict, default_bg: str = "#000000",
+               settled: bool = True) -> list[Problem]:
+    """Run all automatic checks on one scene's measurements. Pure function.
+
+    ``settled`` is False for early animation samples: safe-area and occupancy
+    are only meaningful once entrance animations have finished.
+    """
     cc = cfg.get("checks", {})
+    video = cfg.get("video", {})
     problems: list[Problem] = []
     vw = measurement.get("vw", 0)
     vh = measurement.get("vh", 0)
     elements = measurement.get("elements", [])
+    boxes = measurement.get("boxes", [])
 
     # --- structural / runtime ---
     if not measurement.get("hasSetTime"):
@@ -224,6 +318,22 @@ def run_checks(measurement: dict, plan_duration: float, console_errors: list[str
                 problems.append(Problem("overlap",
                                         f"{_label(a)} overlaps {_label(b)} "
                                         f"({inter / smaller:.0%} of smaller block)"))
+
+    # --- safe area + occupancy (only when the measurement provides .occ boxes) ---
+    # Synthetic measurements from older tests omit "boxes"; skip the mobile-specific
+    # geometry checks there so the pure typography logic stays independently testable.
+    if measurement.get("boxes") is not None and settled:
+        ok_safe, safe_reason = safe_area_ok(elements, vw, vh, video, tol=max(tol, 6))
+        if not ok_safe:
+            problems.append(Problem("safe_area", f"content leaves the mobile safe area: {safe_reason}"))
+
+        min_occ = float(video.get("min_occupancy", 0.55))
+        occ = occupancy_ratio(boxes, vh)
+        if occ < min_occ:
+            problems.append(Problem("low_occupancy",
+                                    f"visible content covers {occ:.0%} of frame height < {min_occ:.0%} minimum"))
+        measurement["occupancy"] = round(occ, 4)
+        measurement["safe_area_ok"] = ok_safe
 
     # dedupe identical messages
     seen, unique = set(), []
