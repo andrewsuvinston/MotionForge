@@ -10,6 +10,7 @@ import copy
 import json
 import logging
 import re
+import shutil
 import time
 from pathlib import Path
 
@@ -33,6 +34,36 @@ from .memory import Memory
 log = logging.getLogger("motionforge.pipeline")
 
 RESCUE_COMPONENT = "payoff"
+
+
+def _cleanup_run_intermediates(run_dir: Path, cfg: dict) -> None:
+    """Remove intermediate PNG frames and temp audio after final MP4 is encoded."""
+    cleanup_cfg = cfg.get("cleanup") or {}
+    if cleanup_cfg.get("auto_delete_frames", True):
+        frames_root = run_dir / "frames"
+        if frames_root.exists():
+            shutil.rmtree(frames_root, ignore_errors=True)
+    if cleanup_cfg.get("auto_delete_temp_audio", True):
+        audio_dir = run_dir / "audio"
+        if audio_dir.exists():
+            for tmp in audio_dir.glob("*.tmp.*"):
+                tmp.unlink(missing_ok=True)
+            for part_dir in (audio_dir / "tmp", audio_dir / "chunks"):
+                if part_dir.exists():
+                    shutil.rmtree(part_dir, ignore_errors=True)
+
+
+def _prune_old_runs(runs_root: Path, keep_last_n: int) -> None:
+    """Keep only the most recent `keep_last_n` run directories."""
+    if keep_last_n <= 0 or not runs_root.exists():
+        return
+    dirs = sorted(
+        (p for p in runs_root.iterdir() if p.is_dir()),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    for old_dir in dirs[keep_last_n:]:
+        shutil.rmtree(old_dir, ignore_errors=True)
 
 
 def _slug(text: str) -> str:
@@ -407,6 +438,7 @@ def create_video(cfg: dict, prompt: str, ratio: str = "9:16", duration: float = 
         out_path = run_dir / "final.mp4"
         renderer.encode(frames_dir, out_path, audio_path=Path(audio_report["path"]))
         _checkpoint(run_dir, "rendered", frames=n_frames)
+        _cleanup_run_intermediates(run_dir, cfg)
 
         # Re-write the package now that the video definitely exists.
         if not Path(package.get("video") or "").exists():
@@ -465,6 +497,7 @@ def create_video(cfg: dict, prompt: str, ratio: str = "9:16", duration: float = 
                                                 "overall": final_panel["overall"],
                                                 "passed": final_panel["passed"]}, package)
     _checkpoint(run_dir, "done", output=str(out_path))
+    _prune_old_runs(PROJECT_ROOT / "runs", int((cfg.get("cleanup") or {}).get("keep_last_n_runs", 3)))
 
     logging.getLogger("motionforge").removeHandler(fh)
     fh.close()

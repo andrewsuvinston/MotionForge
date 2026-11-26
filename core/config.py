@@ -72,6 +72,11 @@ DEFAULTS = {
     "series": {
         "default_ratio": "9:16", "default_duration": 35, "default_quality": "preview",
     },
+    "cleanup": {
+        "keep_last_n_runs": 3,
+        "auto_delete_frames": True,
+        "auto_delete_temp_audio": True,
+    },
 }
 
 
