@@ -57,7 +57,10 @@ class Renderer:
         self.cfg = cfg
         self.width, self.height = resolution_for(cfg, ratio)
         self.preview = preview
-        self.fps = int(cfg["render"]["preview_fps"] if preview else cfg["render"]["fps"])
+        video_cfg = cfg.get("video", {})
+        legacy = cfg.get("render", {})
+        self.fps = int(video_cfg.get("preview_fps", legacy.get("preview_fps", 15)) if preview
+                       else video_cfg.get("fps", legacy.get("fps", 30)))
         self.dsf = 0.5 if preview else 1.0
         self._pw = None
         self._browser = None
@@ -136,7 +139,9 @@ class Renderer:
         for f in (0.5, 0.75):
             try:
                 self._set_time(round(f * duration, 4))
-                result.measurements.append(self._page.evaluate(MEASURE_JS))
+                m = self._page.evaluate(MEASURE_JS)
+                m["fraction"] = f
+                result.measurements.append(m)
             except Exception as exc:  # noqa: BLE001
                 result.console_errors.append(f"measurement at {f} failed: {exc}")
         result.console_errors.extend(self._console_errors)
@@ -162,10 +167,14 @@ class Renderer:
     # ---------------- encoding ----------------
 
     def encode(self, frames_dir: Path, out_path: Path,
-               voiceover: Path | None = None, music: Path | None = None) -> Path:
+               voiceover: Path | None = None, music: Path | None = None,
+               audio_path: Path | None = None) -> Path:
         ffmpeg = find_ffmpeg()
         cmd = [ffmpeg, "-y", "-framerate", str(self.fps), "-i", str(frames_dir / "%06d.png")]
-        if voiceover and music:
+        if audio_path and Path(audio_path).exists():
+            cmd += ["-i", str(audio_path), "-map", "0:v", "-map", "1:a",
+                    "-c:a", "aac", "-b:a", "192k", "-shortest"]
+        elif voiceover and music:
             cmd += ["-i", str(voiceover), "-i", str(music),
                     "-filter_complex", "[2:a]volume=0.25[m];[1:a][m]amix=inputs=2:duration=first[a]",
                     "-map", "0:v", "-map", "[a]", "-c:a", "aac", "-b:a", "192k", "-shortest"]

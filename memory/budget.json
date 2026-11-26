@@ -1,0 +1,84 @@
+{
+  "date": "2026-11-25",
+  "requests": 29,
+  "cost": 0.011276,
+  "runs": {
+    "20261125_172933_number_series_puzzle_35_seconds": {
+      "requests": 7,
+      "cost": 0.011276,
+      "stages": {
+        "puzzle": 3,
+        "hooks": 2,
+        "judges": 2
+      }
+    },
+    "20261125_173334_number_series_puzzle_35_seconds": {
+      "requests": 4,
+      "cost": 0.0,
+      "stages": {
+        "hooks": 2,
+        "judges": 2
+      }
+    },
+    "20261125_174023_number_series_puzzle_35_seconds": {
+      "requests": 4,
+      "cost": 0.0,
+      "stages": {
+        "hooks": 2,
+        "judges": 2
+      }
+    },
+    "20261125_180003_number_series_puzzle_12_seconds": {
+      "requests": 0,
+      "cost": 0.0,
+      "stages": {}
+    },
+    "20261125_180707_number_series_episode_1_make_the": {
+      "requests": 0,
+      "cost": 0.0,
+      "stages": {}
+    },
+    "20261125_181656_percentage_discount_puzzle_12_se": {
+      "requests": 0,
+      "cost": 0.0,
+      "stages": {}
+    },
+    "20261125_182427_number_series_puzzle_35_seconds": {
+      "requests": 2,
+      "cost": 0.0,
+      "stages": {
+        "judges": 2
+      }
+    },
+    "20261125_183251_number_series_puzzle_35_seconds": {
+      "requests": 2,
+      "cost": 0.0,
+      "stages": {
+        "judges": 2
+      }
+    },
+    "20261125_184411_number_series_puzzle_35_seconds": {
+      "requests": 4,
+      "cost": 0.0,
+      "stages": {
+        "hooks": 2,
+        "judges": 2
+      }
+    },
+    "20261125_185227_number_series_puzzle_35_seconds": {
+      "requests": 2,
+      "cost": 0.0,
+      "stages": {
+        "judges": 2
+      }
+    },
+    "20261125_190508_number_series_puzzle_35_seconds": {
+      "requests": 4,
+      "cost": 0.0,
+      "stages": {
+        "hooks": 2,
+        "judges": 2
+      }
+    }
+  }
+}
